@@ -1,6 +1,6 @@
 # Pocketbay
 
-**Download for Windows:** [latest release](https://github.com/deveshpat/pocketbay/releases/latest) → `Pocketbay-Windows.zip`
+**Download for Windows:** [latest release](https://github.com/WeirdRunner/pocketbay/releases/latest) → `Pocketbay-Windows.zip`
 (installed copies update themselves). The Mac app is built from source (see Build).
 
 A native macOS front end for the Android Emulator, built for playing Android games
