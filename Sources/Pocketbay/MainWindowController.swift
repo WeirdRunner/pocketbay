@@ -112,7 +112,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
                 client.startInputStream()
                 screen.resetForNewSession()
                 sessionTasks = [streamScreen(client), pollForegroundApp(), syncClipboardToMac(client), streamAudio(client)]
-                if micEnabled { startMic() }
+                // Mic auto-start disabled (see toggleMic).
             } else if manager.isRunning {
                 throw NSError(domain: "Pocketbay", code: 12, userInfo: [NSLocalizedDescriptionKey: "Android took too long to start."])
             }
@@ -145,6 +145,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
     }
 
     func toggleMic() {
+        // Injecting mic audio crashes the emulator while it runs with "-audio none"
+        // (QemuAudioInputEngine segfaults in audio_forwarder_enable). Disabled until fixed.
+        micEnabled = false
+        toast.show("Microphone isn't available yet — it crashed Android, so it's switched off for now", duration: 6)
+        if true { return }
         if micEnabled {
             micEnabled = false
             stopMic()

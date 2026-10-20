@@ -53,8 +53,39 @@ public static class Updater
         }
         catch (Exception e)
         {
-            Log.Write("update failed: " + e.Message);
+            Log.Write("update rename failed, using helper: " + e);
             try { if (!File.Exists(exe) && File.Exists(exe + ".old")) File.Move(exe + ".old", exe); } catch { }
+            return ApplyWithHelper(exe, pending);
+        }
+    }
+
+    /// Fallback when the running .exe can't be renamed (folder permissions, antivirus):
+    /// a small script waits for this process to exit, copies the new exe over the old
+    /// one, and starts it.
+    static bool ApplyWithHelper(string exe, Version pending)
+    {
+        try
+        {
+            var script = Path.Combine(Dir, "apply-update.cmd");
+            var log = Path.Combine(Paths.Logs, "update-helper.log");
+            File.WriteAllText(script, string.Join("\r\n", new[]
+            {
+                "@echo off",
+                $"set PID={Environment.ProcessId}",
+                ":wait",
+                "tasklist /FI \"PID eq %PID%\" | find \"%PID%\" >nul && (timeout /t 1 /nobreak >nul & goto wait)",
+                $"copy /y \"{PendingExe}\" \"{exe}\" >> \"{log}\" 2>&1",
+                $"if errorlevel 1 (echo copy failed >> \"{log}\" & exit /b 1)",
+                $"del \"{PendingExe}\" \"{PendingVersion}\"",
+                $"start \"\" \"{exe}\"",
+            }));
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"") { UseShellExecute = false, CreateNoWindow = true });
+            Log.Write($"update {pending} handed to helper");
+            return true;   // exit now; the helper restarts Pocketbay
+        }
+        catch (Exception e)
+        {
+            Log.Write("update helper failed: " + e);
             return false;
         }
     }
