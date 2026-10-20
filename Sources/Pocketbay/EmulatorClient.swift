@@ -176,6 +176,25 @@ final class EmulatorClient: @unchecked Sendable {
         }
     }
 
+    /// Feeds 48 kHz mono signed 16-bit PCM into Android's microphone until `pcm` finishes.
+    func injectMicrophone(_ pcm: AsyncStream<Data>) async throws {
+        var format = Android_Emulation_Control_AudioFormat()
+        format.samplingRate = 48_000
+        format.channels = .mono
+        format.format = .audFmtS16
+        format.mode = .modeRealTime
+        let fmt = format
+        _ = try await emu.injectAudio(metadata: metadata, requestProducer: { writer in
+            for await chunk in pcm {
+                var packet = Android_Emulation_Control_AudioPacket()
+                packet.format = fmt   // only the first packet's format is honoured
+                packet.timestamp = UInt64(Date().timeIntervalSince1970 * 1_000_000)
+                packet.audio = chunk
+                try await writer.write(packet)
+            }
+        })
+    }
+
     // MARK: Clipboard
 
     func clipboard() async -> String? {

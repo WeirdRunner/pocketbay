@@ -112,6 +112,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
                 client.startInputStream()
                 screen.resetForNewSession()
                 sessionTasks = [streamScreen(client), pollForegroundApp(), syncClipboardToMac(client), streamAudio(client)]
+                if micEnabled { startMic() }
             } else if manager.isRunning {
                 throw NSError(domain: "Pocketbay", code: 12, userInfo: [NSLocalizedDescriptionKey: "Android took too long to start."])
             }
@@ -120,6 +121,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
             while manager.isRunning { try await Task.sleep(for: .seconds(1)) }
             guard !isQuitting else { return }
             sessionTasks.forEach { $0.cancel() }
+            stopMic()
             screen.releaseAllInput()
             screen.client = nil
             engine.client = nil
@@ -132,6 +134,60 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
 
     /// Android's sound, played by Pocketbay so it follows the Mac's output device.
     private let audio = AudioPlayer()
+
+    // MARK: Microphone (Mac input → Android's virtual mic)
+
+    private let mic = MicCapture()
+    private var micFeed: AsyncStream<Data>.Continuation?
+    var micEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "micEnabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "micEnabled") }
+    }
+
+    func toggleMic() {
+        if micEnabled {
+            micEnabled = false
+            stopMic()
+            toast.show("Microphone off")
+            return
+        }
+        Task { @MainActor in
+            guard await MicCapture.requestAccess() else {
+                toast.show("Allow Pocketbay in System Settings › Privacy & Security › Microphone, then try again", duration: 7)
+                return
+            }
+            micEnabled = true
+            startMic()
+            toast.show("Microphone on — turn on voice chat in the game")
+        }
+    }
+
+    private func startMic() {
+        stopMic()
+        guard let client else { sidebar.setOn(.mic, micEnabled); return }
+        let (stream, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .bufferingNewest(8))
+        micFeed = continuation
+        do {
+            try mic.start { continuation.yield($0) }
+        } catch {
+            micFeed = nil
+            toast.show("Microphone: \(error.localizedDescription)", duration: 5)
+            return
+        }
+        sidebar.setOn(.mic, true)
+        Task.detached { [weak self] in
+            do { try await client.injectMicrophone(stream) }
+            catch { NSLog("Pocketbay: microphone stream ended: %@", "\(error)") }
+            await MainActor.run { if self?.micFeed != nil { self?.stopMic() } }
+        }
+    }
+
+    private func stopMic() {
+        mic.stop()
+        micFeed?.finish()
+        micFeed = nil
+        sidebar.setOn(.mic, false)
+    }
 
     private func streamAudio(_ client: EmulatorClient) -> Task<Void, Never> {
         let audio = self.audio
@@ -383,6 +439,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSMenuDe
             keymapEnabled.toggle()
             toast.show(keymapEnabled ? "Game controls on (in \(engine.keymap.name))" : "Game controls off")
         case .keymapEdit: setEditing(!isEditingKeymap)
+        case .mic: toggleMic()
         case .fullscreen: window?.toggleFullScreen(nil)
         }
     }

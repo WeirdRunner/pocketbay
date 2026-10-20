@@ -98,7 +98,7 @@ public sealed class MainWindow : Window
         Grid.SetColumn(_sidebarHost, 1);
         _root.Children.Add(_sidebarHost);
 
-        _screen.FirstFrame += () => _status.Visibility = Visibility.Collapsed;
+        _screen.FirstFrame += () => { _gotFrame = true; _status.Visibility = Visibility.Collapsed; };
         _screen.DeviceSizeChanged += _ => _overlay.Refresh();
         _screen.SizeChanged += (_, _) => _overlay.Refresh();
         _screen.FilesDropped += files =>
@@ -285,11 +285,38 @@ public sealed class MainWindow : Window
 
     /// Boots (or attaches to) Android, wires screen + input + audio, and restarts
     /// everything if the emulator stops unexpectedly.
+    bool _gotFrame;
+    static readonly string[] GraphicsFallback = ["standard", "angle", "software"];
+
+    static string GraphicsName(string mode) => mode switch
+    {
+        "angle" => "compatibility graphics", "software" => "software graphics", _ => "standard graphics",
+    };
+
+    /// Android stopped or stalled before showing anything: try the next graphics mode
+    /// automatically, and only show an error once every mode has failed.
+    bool TryNextGraphicsMode(string why)
+    {
+        Log.Write($"{why} with {Settings.Current.Graphics} graphics");
+        var i = Array.IndexOf(GraphicsFallback, Settings.Current.Graphics);
+        if (i < 0 || i + 1 >= GraphicsFallback.Length) return false;
+        Settings.Current.Graphics = GraphicsFallback[i + 1];
+        Settings.Save();
+        return true;
+    }
+
+    void ShowStartFailure(string message)
+    {
+        ShowStatus(message + "\n\n" + _manager.LastLogLines(4), false, null,
+            ("Try again", () => { Settings.Current.Graphics = "standard"; Settings.Save(); _ = RunSessionAsync(); }),
+            ("Report a problem", ReportProblem));
+    }
+
     async Task RunSessionAsync()
     {
         while (!_quitting)
         {
-            ShowStatus("Starting Android…", true);
+            ShowStatus($"Starting Android… ({GraphicsName(Settings.Current.Graphics)})\nThe first start can take a few minutes.", true);
             EmulatorManager.Endpoint endpoint;
             try { endpoint = await _manager.StartAsync(); }
             catch (Exception e)
@@ -308,14 +335,22 @@ public sealed class MainWindow : Window
             _engine.Client = client;
 
             var booted = false;
-            for (int i = 0; i < 480 && _manager.IsRunning; i++)
+            var bootStart = DateTime.Now;
+            for (int i = 0; i < 1200 && _manager.IsRunning; i++)   // up to 10 minutes on slow PCs
             {
                 if (await client.IsBootedAsync()) { booted = true; break; }
+                if (i % 10 == 0)
+                    ShowStatus($"Starting Android… ({GraphicsName(Settings.Current.Graphics)}) {(int)(DateTime.Now - bootStart).TotalSeconds}s\nThe first start can take a few minutes.", true);
                 await Task.Delay(500);
             }
-            if (!booted && _manager.IsRunning)
+            if (!booted)
             {
-                ShowStatus("Android took too long to start.", false, null, ("Try again", () => _ = RunSessionAsync()));
+                var crashed = !_manager.IsRunning;
+                if (!crashed) await _manager.ShutdownAsync();
+                client.Dispose();
+                _client = null; _screen.Client = null; _engine.Client = null;
+                if (TryNextGraphicsMode(crashed ? "Android stopped while booting" : "Android didn't finish booting")) continue;
+                ShowStartFailure(crashed ? "Android keeps stopping while it starts." : "Android took too long to start.");
                 return;
             }
 
@@ -333,6 +368,19 @@ public sealed class MainWindow : Window
                 _ = SyncClipboardToPcAsync(client, ct);
                 if (_pendingPack is { } packFile) { _pendingPack = null; InstallPack(packFile); }
                 _ = PollForegroundAppAsync(ct);
+
+                // Booted but no picture: the graphics mode isn't working on this PC.
+                _gotFrame = false;
+                for (int i = 0; i < 40 && !_gotFrame && _manager.IsRunning; i++) await Task.Delay(500);
+                if (!_gotFrame && _manager.IsRunning)
+                {
+                    if (TryNextGraphicsMode("no picture after boot"))
+                    {
+                        ShowStatus($"Switching to {GraphicsName(Settings.Current.Graphics)}…", true);
+                        await _manager.ShutdownAsync();   // watchdog below restarts with the new mode
+                    }
+                    else { ShowStartFailure("Android started but its screen isn't showing."); }
+                }
             }
 
             // Watchdog: if Android stops without us asking, bring it back.

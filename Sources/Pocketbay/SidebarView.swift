@@ -3,7 +3,7 @@ import AppKit
 /// Vertical tool strip on the right edge, like MuMu's.
 final class SidebarView: NSView {
     enum Action: CaseIterable {
-        case back, home, recents, volumeUp, volumeDown, rotate, screenshot, installApk, keymapToggle, keymapEdit, fullscreen
+        case back, home, recents, volumeUp, volumeDown, mic, rotate, screenshot, installApk, keymapToggle, keymapEdit, fullscreen
 
         var symbol: String {
             switch self {
@@ -17,6 +17,7 @@ final class SidebarView: NSView {
             case .installApk: return "arrow.down.app"
             case .keymapToggle: return "keyboard"
             case .keymapEdit: return "slider.horizontal.3"
+            case .mic: return "mic"
             case .fullscreen: return "arrow.up.left.and.arrow.down.right"
             }
         }
@@ -33,6 +34,7 @@ final class SidebarView: NSView {
             case .installApk: return "Install an app (.apk) — or drag one onto the window"
             case .keymapToggle: return "Game controls on/off  (⌘K)"
             case .keymapEdit: return "Edit game controls  (⌘E)"
+            case .mic: return "Microphone on/off (for in-game voice chat)"
             case .fullscreen: return "Full screen  (⌃⌘F)"
             }
         }
@@ -70,7 +72,7 @@ final class SidebarView: NSView {
 
         let top = NSStackView(views: [
             button(.back), button(.home), button(.recents), divider(),
-            button(.volumeUp), button(.volumeDown), button(.rotate), button(.screenshot), button(.installApk), divider(),
+            button(.volumeUp), button(.volumeDown), button(.mic), button(.rotate), button(.screenshot), button(.installApk), divider(),
             button(.keymapToggle), button(.keymapEdit),
         ])
         top.orientation = .vertical

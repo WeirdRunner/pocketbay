@@ -41,6 +41,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>Android in your pocket bay.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Pocketbay sends your microphone to Android for in-game voice chat, only while the microphone button is on.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>
