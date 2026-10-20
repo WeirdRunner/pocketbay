@@ -286,7 +286,7 @@ public sealed class MainWindow : Window
     /// Boots (or attaches to) Android, wires screen + input + audio, and restarts
     /// everything if the emulator stops unexpectedly.
     bool _gotFrame;
-    static readonly string[] GraphicsFallback = ["standard", "angle", "software"];
+    static readonly string[] GraphicsFallback = ["angle", "standard", "software"];
 
     static string GraphicsName(string mode) => mode switch
     {
@@ -308,7 +308,7 @@ public sealed class MainWindow : Window
     void ShowStartFailure(string message)
     {
         ShowStatus(message + "\n\n" + _manager.LastLogLines(4), false, null,
-            ("Try again", () => { Settings.Current.Graphics = "standard"; Settings.Save(); _ = RunSessionAsync(); }),
+            ("Try again", () => { Settings.Current.Graphics = "angle"; Settings.Save(); _ = RunSessionAsync(); }),
             ("Report a problem", ReportProblem));
     }
 
@@ -634,7 +634,7 @@ public sealed class MainWindow : Window
         menu.Items.Add(new Separator());
 
         var gfx = new MenuItem { Header = "Graphics (restarts Android)" };
-        foreach (var (mode, label) in new[] { ("standard", "Standard"), ("angle", "Compatibility (ANGLE / Vulkan)"), ("software", "Software (slow, for broken drivers)") })
+        foreach (var (mode, label) in new[] { ("angle", "Compatibility (ANGLE / Vulkan) — recommended"), ("standard", "Standard"), ("software", "Software (slow, for broken drivers)") })
         {
             var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = Settings.Current.Graphics == mode };
             item.Click += async (_, _) =>

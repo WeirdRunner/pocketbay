@@ -163,7 +163,9 @@ public sealed class Settings
     public bool KeymapEnabled { get; set; } = true;
     public bool ShowKeyHints { get; set; } = true;
     /// "standard" (emulator default), "angle" (ANGLE/Vulkan) or "software".
-    public string Graphics { get; set; } = "standard";
+    public string Graphics { get; set; } = "angle";
+    /// Bumped when the default graphics mode changes, to migrate old settings once.
+    public int GraphicsDefaultVersion { get; set; }
     public bool LicenseAccepted { get; set; }
     public double[]? WindowRect { get; set; }
 
@@ -171,8 +173,18 @@ public sealed class Settings
 
     static Settings Load()
     {
-        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(Paths.Settings)) ?? new(); }
-        catch { return new(); }
+        Settings s;
+        try { s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(Paths.Settings)) ?? new(); }
+        catch { s = new(); }
+        // v1.0.7: compatibility graphics (ANGLE/Vulkan) became the default because Unreal
+        // Engine games (BGMI) crash after their logo with the emulator's standard GLES driver.
+        if (s.GraphicsDefaultVersion < 2)
+        {
+            if (s.Graphics == "standard") s.Graphics = "angle";
+            s.GraphicsDefaultVersion = 2;
+            try { File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true })); } catch { }
+        }
+        return s;
     }
 
     public static void Save()
