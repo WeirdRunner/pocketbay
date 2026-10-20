@@ -15,6 +15,12 @@ public static class Report
     public static async Task<string> CreateAsync()
     {
         var summary = await SystemSummaryAsync();
+        // Android's own logs (why an app crashed or closed), if Android is running.
+        string Adb(params string[] a) => File.Exists(Paths.Adb)
+            ? EmulatorManager.Run(Paths.Adb, ["-s", "emulator-5556", .. a], 30_000).GetAwaiter().GetResult().Output : "";
+        var crash = await Task.Run(() => Adb("logcat", "-d", "-b", "crash"));
+        var main = await Task.Run(() => Adb("logcat", "-d", "-t", "8000", "-b", "main,system,events"));
+        var device = await Task.Run(() => Adb("shell", "getprop ro.product.cpu.abilist; getprop ro.build.fingerprint; dumpsys package com.pubg.imobile | grep -E 'versionName|primaryCpuAbi'"));
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var zipPath = Path.Combine(desktop, $"Pocketbay-logs-{DateTime.Now:yyyyMMdd-HHmm}.zip");
         if (File.Exists(zipPath)) File.Delete(zipPath);
@@ -33,6 +39,9 @@ public static class Report
                 AddText(Path.GetFileName(file), text);
             }
             if (File.Exists(Paths.Settings)) AddText("settings.json", File.ReadAllText(Paths.Settings));
+            if (crash.Length > 0) AddText("android-crash.log", crash);
+            if (main.Length > 0) AddText("android-logcat.log", main);
+            if (device.Length > 0) AddText("android-device.txt", device);
         }
         return zipPath;
     }
