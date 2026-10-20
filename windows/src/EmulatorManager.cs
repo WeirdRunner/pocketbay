@@ -103,8 +103,15 @@ public sealed class EmulatorManager
         psi.Environment["ANDROID_SDK_ROOT"] = Paths.Sdk;
         psi.Environment["ANDROID_HOME"] = Paths.Sdk;
         psi.Environment["ANDROID_AVD_HOME"] = Paths.AvdHome;
+        // The emulator writes settings/locks under the user's .android folder and loops
+        // forever ("error 3", path not found) if it doesn't exist. Give it one we own.
+        var userHome = Directory.CreateDirectory(Path.Combine(Paths.Local, "android-user")).FullName;
+        psi.Environment["ANDROID_USER_HOME"] = userHome;
+        psi.Environment["ANDROID_EMULATOR_HOME"] = userHome;
+        try { Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".android")); } catch { }
 
-        File.WriteAllText(LogFile, "");
+        KillStuckEmulator();
+        try { File.WriteAllText(LogFile, ""); } catch (IOException) { }
         _proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         void Append(string? line) { if (line == null) return; try { File.AppendAllText(LogFile, line + Environment.NewLine); } catch { } }
         _proc.OutputDataReceived += (_, e) => Append(e.Data);
@@ -122,7 +129,21 @@ public sealed class EmulatorManager
                 throw new InvalidOperationException("Android didn't start.\n\n" + LastLogLines(6) + $"\n\nFull log: {LogFile}");
             await Task.Delay(500);
         }
+        KillStuckEmulator();
         throw new TimeoutException("Timed out starting Android.");
+    }
+
+    /// A previous attempt that never advertised itself (stuck) must not keep running and
+    /// holding the log file.
+    void KillStuckEmulator()
+    {
+        try { if (_proc is { HasExited: false }) _proc.Kill(true); } catch { }
+        _proc = null;
+        if (FindRunning() != null) return;
+        foreach (var p in Process.GetProcesses())
+        {
+            try { if (p.ProcessName.StartsWith("qemu-system", StringComparison.OrdinalIgnoreCase)) p.Kill(true); } catch { }
+        }
     }
 
     public string LastLogLines(int n)

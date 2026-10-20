@@ -67,8 +67,11 @@ public static class Updater
 
     /// Checks GitHub; if a newer release exists, downloads it. Returns the new version,
     /// or null when up to date (or offline).
+    static readonly SemaphoreSlim Gate = new(1, 1);
+
     public static async Task<Version?> DownloadUpdateAsync()
     {
+        await Gate.WaitAsync();   // the periodic and manual checks must not download at once
         try
         {
             using var doc = JsonDocument.Parse(await Http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest"));
@@ -106,6 +109,7 @@ public static class Updater
             Log.Write("update check: " + e.Message);
             return null;
         }
+        finally { Gate.Release(); }
     }
 
     public static void RestartNow()
